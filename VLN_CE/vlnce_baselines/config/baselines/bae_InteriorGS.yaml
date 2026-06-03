@@ -1,0 +1,7 @@
+BASE_TASK_CONFIG_PATH: VLN_CE/GN_Bench_extensions/config/vlnce_task_bae_InteriorGS.yaml
+EVAL:
+    IDENTIFICATION: gs
+    EARLY_STOP_ROTATION: 25
+    EARLY_STOP_STEPS: 500
+
+

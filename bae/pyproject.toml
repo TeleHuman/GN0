@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=59.5"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bae"
+version = "1.0"
+description = "BAE: Generalist Agent for Robotic Language-guided Navigation"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "torch>=2.6.0",
+    "transformers>=4.37.0",
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*", "data*", "work_dirs*", "model_zoo*"]
+
+[tool.wheel]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*", "data*", "work_dirs*", "model_zoo*"]
