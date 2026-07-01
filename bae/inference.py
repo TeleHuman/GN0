@@ -1,27 +1,107 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""BAE inference wrapper using Qwen3VL + LlamaFactory."""
+"""BAE inference wrapper using Qwen3VL + Transformers."""
 
 from __future__ import annotations
 
+from types import MethodType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
-from transformers import Qwen3VLForConditionalGeneration
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    PreTrainedTokenizerBase,
+    Qwen3VLForConditionalGeneration,
+)
 
 from .prompts import build_prompt
 from .parser import parse_actions6, parse_pixels, validate_actions
 
-# Try to import LlamaFactory
-_LLAMAFACTORY_AVAILABLE = False
-try:
-    from llamafactory.hparams import ModelArguments
-    from llamafactory.model import load_tokenizer
+IMAGE_MAX_PIXELS = 768 * 768
+IMAGE_MIN_PIXELS = 32 * 32
+VIDEO_MAX_PIXELS = 256 * 256
+VIDEO_MIN_PIXELS = 16 * 16
+VIDEO_FPS = 2.0
+VIDEO_MAXLEN = 128
+AUDIO_SAMPLING_RATE = 16000
 
-    _LLAMAFACTORY_AVAILABLE = True
-except ImportError:
-    pass
+
+def _patch_tokenizer_padding(tokenizer: PreTrainedTokenizerBase) -> None:
+    """Use the base padding implementation for custom tokenizers."""
+    pad_fn = getattr(tokenizer, "_pad", None)
+    pad_impl = getattr(pad_fn, "__func__", None)
+    if pad_impl is not None and "PreTrainedTokenizerBase" not in str(pad_impl):
+        tokenizer._pad = MethodType(PreTrainedTokenizerBase._pad, tokenizer)
+
+
+def _load_transformers_tokenizer(
+    model_path: str, trust_remote_code: bool
+) -> PreTrainedTokenizerBase:
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            use_fast=True,
+            split_special_tokens=False,
+            padding_side="right",
+            trust_remote_code=trust_remote_code,
+        )
+    except ValueError:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            use_fast=False,
+            padding_side="right",
+            trust_remote_code=trust_remote_code,
+        )
+    except Exception as exc:
+        raise OSError("Failed to load tokenizer with Transformers.") from exc
+
+    _patch_tokenizer_padding(tokenizer)
+    return tokenizer
+
+
+def _patch_processor(processor: Any, tokenizer: PreTrainedTokenizerBase) -> None:
+    """Attach default multimodal preprocessing attributes."""
+    setattr(processor, "tokenizer", tokenizer)
+    setattr(processor, "image_max_pixels", IMAGE_MAX_PIXELS)
+    setattr(processor, "image_min_pixels", IMAGE_MIN_PIXELS)
+    setattr(processor, "image_do_pan_and_scan", False)
+    setattr(processor, "crop_to_patches", False)
+    setattr(processor, "video_max_pixels", VIDEO_MAX_PIXELS)
+    setattr(processor, "video_min_pixels", VIDEO_MIN_PIXELS)
+    setattr(processor, "video_fps", VIDEO_FPS)
+    setattr(processor, "video_maxlen", VIDEO_MAXLEN)
+    setattr(processor, "use_audio_in_video", False)
+    setattr(processor, "audio_sampling_rate", AUDIO_SAMPLING_RATE)
+
+
+def _load_processor(model_path: str, trust_remote_code: bool) -> Any:
+    tokenizer = _load_transformers_tokenizer(model_path, trust_remote_code)
+
+    try:
+        processor = AutoProcessor.from_pretrained(
+            model_path,
+            use_fast=True,
+            trust_remote_code=trust_remote_code,
+        )
+    except ValueError:
+        processor = AutoProcessor.from_pretrained(
+            model_path,
+            use_fast=False,
+            trust_remote_code=trust_remote_code,
+        )
+    except Exception as exc:
+        raise OSError("Failed to load processor with Transformers.") from exc
+
+    if processor is not None and "Processor" not in processor.__class__.__name__:
+        processor = None
+
+    if processor is None:
+        raise RuntimeError("Failed to load processor from Transformers")
+
+    _patch_processor(processor, tokenizer)
+    return processor
 
 
 class BAEInference:
@@ -47,11 +127,6 @@ class BAEInference:
             trust_remote_code: Whether to trust remote code
             max_new_tokens: Maximum new tokens to generate
         """
-        if not _LLAMAFACTORY_AVAILABLE:
-            raise RuntimeError(
-                "LlamaFactory not available. Install it or add LlamaFactory/src to sys.path"
-            )
-
         self.model_path = model_path
         self.prompt_type = prompt_type.upper()
         self.max_new_tokens = max_new_tokens
@@ -66,16 +141,8 @@ class BAEInference:
         )
         self.model.eval()
 
-        # Load processor via LlamaFactory
-        model_args = ModelArguments(
-            model_name_or_path=model_path,
-            trust_remote_code=trust_remote_code,
-        )
-        tokenizer_module = load_tokenizer(model_args)
-        self.processor = tokenizer_module["processor"]
-
-        if self.processor is None:
-            raise RuntimeError("Failed to load processor from LlamaFactory")
+        # Load tokenizer and multimodal processor via Transformers.
+        self.processor = _load_processor(model_path, trust_remote_code)
 
         print("BAE model loaded successfully")
 
@@ -93,12 +160,12 @@ class BAEInference:
         raise ValueError(f"Unsupported dtype: {dtype}")
 
     def _build_messages(
-        self, prompt_text: str, image_paths: List[str]
+        self, prompt_text: str, image_inputs: Sequence[Any]
     ) -> List[Dict[str, Any]]:
         """Build messages for Qwen3VL processor."""
         content: List[Dict[str, Any]] = []
-        for p in image_paths:
-            content.append({"type": "image", "image": p})
+        for image_input in image_inputs:
+            content.append({"type": "image", "image": image_input})
         content.append({"type": "text", "text": prompt_text})
         return [{"role": "user", "content": content}]
 
@@ -172,7 +239,7 @@ class BAEInference:
     @torch.inference_mode()
     def predict(
         self,
-        image_paths: List[str],
+        image_paths: Sequence[Any],
         instruction: str,
         cur_x: Optional[int] = None,
         cur_y: Optional[int] = None,
@@ -196,7 +263,8 @@ class BAEInference:
         Predict 6 actions and pixel waypoints for navigation.
 
         Args:
-            image_paths: List of image paths (order depends on prompt_type)
+            image_paths: List of image inputs (paths or in-memory images; order
+                depends on prompt_type)
             instruction: Navigation instruction text
             cur_x: Current x pixel coordinate in original OCC pixels (required for V1/V2)
             cur_y: Current y pixel coordinate in original OCC pixels (required for V1/V2)

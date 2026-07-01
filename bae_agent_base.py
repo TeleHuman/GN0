@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from pathlib import Path
+from PIL import Image
 from scipy.spatial.transform import Rotation as R
 
 from GN_Bench.core.agent import Agent
@@ -21,6 +22,13 @@ ACTION_TOKENS = {
     ACTION_TURN_RIGHT: "<RIGHT>",
 }
 HISTORY_ACTION_LIMIT = 5
+IMAGE_DIRS = {
+    "rgb": "model_input/rgb",
+    "hist": "model_input/rgb_history",
+    "occ": "model_input/occ",
+    "occ_traj": "trajectory_vis/occ_executed",
+    "bev_traj": "trajectory_vis/bev_executed",
+}
 
 
 class BAEAgentBase(Agent):
@@ -66,6 +74,7 @@ class BAEAgentBase(Agent):
 
     def save_observation_images(self, sim, rgb):
         occ_map = sim.get_occ_map()
+        bev_map = sim.get_bev_map() if self.prompt_type in {"V1", "V2"} else None
         occ_traj = sim.get_occ_map_with_trajectory()
         bev_traj = sim.get_bev_map_with_trajectory()
 
@@ -73,11 +82,11 @@ class BAEAgentBase(Agent):
         self.rgb_list.append(rgb)
 
         paths = {
-            "rgb": self.save_image(rgb, "rgb"),
-            "occ": self.save_image(occ_map, "occ"),
-            "occ_traj": self.save_image(occ_traj, "occ_traj"),
-            "bev_traj": self.save_image(bev_traj, "bev_traj"),
-            "bev": sim.bev_path,
+            "rgb": self.save_image(rgb, IMAGE_DIRS["rgb"]),
+            "occ": self.save_image(occ_map, IMAGE_DIRS["occ"]),
+            "bev": self.to_pil_image(bev_map) if bev_map is not None else None,
+            "occ_traj": self.save_image(occ_traj, IMAGE_DIRS["occ_traj"]),
+            "bev_traj": self.save_image(bev_traj, IMAGE_DIRS["bev_traj"]),
         }
         return paths, occ_h, occ_w
 
@@ -87,16 +96,36 @@ class BAEAgentBase(Agent):
                 self.rgb_list[:-1],
                 self.history_action_list,
             )
-            paths["hist"] = self.save_image(hist, "hist")
+            paths["hist"] = self.save_image(hist, IMAGE_DIRS["hist"])
 
         if self.prompt_type == "V1":
+            self.require_bev_input(paths)
             return [paths["rgb"], paths["hist"], paths["bev"], paths["occ"]]
         if self.prompt_type == "V2":
+            self.require_bev_input(paths)
             return [paths["bev"], paths["occ"]]
         if self.prompt_type == "V3":
             return [paths["rgb"], paths["hist"]]
 
         raise ValueError(f"Unsupported prompt_type: {self.prompt_type}")
+
+    @staticmethod
+    def to_pil_image(img: np.ndarray) -> Image.Image:
+        """Convert an RGB numpy image to an in-memory PIL image for model input."""
+        if img is None:
+            raise ValueError("Cannot convert empty image to PIL.")
+
+        img = np.asarray(img)
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0, 255).astype(np.uint8)
+        return Image.fromarray(img, mode="RGB")
+
+    @staticmethod
+    def require_bev_input(paths):
+        if paths.get("bev") is None:
+            raise ValueError(
+                "Prompt V1/V2 requires a BEV image, but simulator returned none."
+            )
 
     @staticmethod
     def get_current_pixel(sim):
@@ -170,4 +199,3 @@ class BAEAgentBase(Agent):
         while len(tokens) < HISTORY_ACTION_LIMIT:
             tokens.append("<None>")
         return "<action>" + ",".join(tokens) + "</action>"
-

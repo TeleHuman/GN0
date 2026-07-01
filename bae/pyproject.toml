@@ -7,14 +7,13 @@ name = "bae"
 version = "1.0"
 description = "BAE: Generalist Agent for Robotic Language-guided Navigation"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "torch>=2.6.0",
-    "transformers>=4.37.0",
+    "transformers>=4.57.1,<5.0",
     "numpy",
 ]
 

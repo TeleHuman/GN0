@@ -11,7 +11,7 @@ from tqdm import trange
 
 from GN_Bench import Env
 from GN_Bench.datasets import make_dataset
-from VLN_CE.vlnce_baselines.config.default import get_config
+from VLN_CE.GN_Bench_extensions.config.default import get_config
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -162,9 +162,7 @@ def run_exp(
         )
 
     dataset_split.episodes = (
-        shard_episodes(global_episodes, split_num, split_id)
-        if global_episodes
-        else []
+        shard_episodes(global_episodes, split_num, split_id) if global_episodes else []
     )
 
     print(

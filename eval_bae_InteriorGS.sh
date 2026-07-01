@@ -5,7 +5,7 @@
 # ==========================================
 MODEL_PATH="model_zoo/bae"
 MODEL_NAME="bae"
-CONFIG_PATH="VLN_CE/vlnce_baselines/config/baselines/bae_InteriorGS.yaml"
+CONFIG_PATH="VLN_CE/GN_Bench_extensions/config/bae_InteriorGS.yaml"
 
 # Format timestamp for unique result directory
 TIMESTAMP=$(date "+%Y%m%d_%H%M%S")

@@ -3,8 +3,10 @@
 <img src="assets/GN0.gif" alt="GN0 teaser" width="92%">
 
 <p>
-  <a href="https://telehuman-gn0.github.io/"><img src="assets/badges/project.svg" alt="Project Page"></a>
+  <a href="https://telehuman-gn0.github.io"><img src="assets/badges/project.svg" alt="Project Page"></a>
   <a href="https://arxiv.org/abs/2606.03682"><img src="assets/badges/paper.svg" alt="GN0 Paper - arXiv"></a>
+  <a href="https://huggingface.co/datasets/TeleEmbodied/GN-Matrix"><img src="assets/badges/dataset.svg" alt="GN-Matrix Dataset"></a>
+  <a href="https://github.com/TeleHuman/GN0-VLN-CE"><img src="assets/badges/bench.svg" alt="GN0-VLN-CE"></a>
 </p>
 
 </div>
@@ -27,7 +29,9 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
 
 | Time | Update |
 | --- | --- |
-| 2026/06 | GN-Bench InteriorGS evaluation workflow  released |
+| 2026/07 | GN-Matrix InteriorGS test trajectories released |
+| 2026/06 | GN0-VLN-CE evaluation workflow released |
+| 2026/06 | GN-Bench InteriorGS evaluation workflow released |
 
 ## 📋 Table of Contents
 
@@ -36,6 +40,7 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
 - [📦 Overview](#-overview)
 - [📚 Getting Started](#-getting-started)
 - [🧪 Evaluation](#-evaluation)
+- [🧭 GN0-VLN-CE](#-gn0-vln-ce)
 - [🔗 Citation](#-citation)
 - [👏 Acknowledgements](#-acknowledgements)
 
@@ -51,18 +56,18 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
       <td><b>GN-BAE</b></td>
     </tr>
     <tr valign="top">
-      <td>Large-scale 3DGS navigation data with dynamic human avatars.</td>
+      <td>Large-scale 3DGS navigation trajectories.</td>
       <td>Interactive benchmark and simulator for high-fidelity VLN evaluation.</td>
       <td>Navigation foundation model for map-based and map-free policy learning.</td>
     </tr>
   </tbody>
 </table>
 
-### 🤗 Model Zoo & Downloads
+### 🤗 Model Zoo & Datasets
 
 - [BAE checkpoint](https://huggingface.co/TeleEmbodied/GN-BAE)
 - [InteriorGS dataset](https://huggingface.co/datasets/spatialverse/InteriorGS)
-- InteriorGS episodes are coming soon
+- [GN-Matrix dataset](https://huggingface.co/datasets/TeleEmbodied/GN-Matrix)
 
 ## 📚 Getting Started
 
@@ -71,25 +76,22 @@ Please refer to [INSTALLATION.md](INSTALLATION.md) for the complete environment 
 After installation, prepare datasets and checkpoints with the following layout:
 
 ```text
-GN0
-├── data
-│   ├── datasets
-│   │   └── GN_Matrix
-│   │       └── InteriorGS_episode
-│   └── scene_datasets
-│       └── InteriorGS
-├── GN-Bench-Tools
-├── model_zoo
-│   └── bae
-├── VLN_CE
-├── run.py
-└── eval_bae_InteriorGS.sh
+GN0/
+├── data/                         # Dataset files
+│   ├── datasets/
+│   │   └── GN_Matrix/
+│   │       └── InteriorGS/
+│   └── scene_datasets/
+│       └── InteriorGS/
+├── GN-Bench-Tools/               # Benchmark tools
+└── model_zoo/
+    └── bae/                      # Pretrained model weights
 ```
 
 Run the InteriorGS evaluation:
 
 ```bash
-zsh eval_bae_InteriorGS.sh \
+bash eval_bae_InteriorGS.sh \
   --model-path model_zoo/bae \
   --chunks 1 \
   --procs-per-gpu 1 \
@@ -123,14 +125,18 @@ bash kill_bae_eval.sh
 | SPL ↑ | Success weighted by path length |
 
 
+## 🧭 GN0-VLN-CE
+
+[GN0-VLN-CE](https://github.com/TeleHuman/GN0-VLN-CE) is a separate companion repository for evaluating our GN-BAE navigation model on the standard VLN-CE benchmark. It connects GN0-style policy learning with established VLN-CE evaluation protocols, while the current repository focuses on the GN-Bench InteriorGS evaluation workflow.
+
 ## 🔗 Citation
 
-If GN-Bench is useful for your research, please cite our paper:
+If GN0 is useful for your research, please cite our paper:
 
 ```bibtex
 @article{li2026gn0,
   title={GN0: Toward a Unified Paradigm for Generation, Evaluation, and Policy Learning in Visual-Language Navigation},
-  author={Li, Xinhai and Zhang, Xiaotao and Huang, Yuehao and Dong, Jiankun and Wang, Tianhang and Zhou, Sunyao and Wu, Yunzi and Sun, Chengnuo and Ge, Yunfei and Weng, Qizhen and Zhang, Chi and Bai, Chenjia and Li, Xuelong},
+  author={Li, Xinhai and Zhang, Xiaotao and Huang, Yuehao and Dong, Jiankun and Wang, Tianhang and Zhou, Sunyao and Wu, Yunzi and Sun, Chengnuo and Ge, Yunfei and Weng, Qizhen and others},
   journal={arXiv preprint arXiv:2606.03682},
   year={2026}
 }

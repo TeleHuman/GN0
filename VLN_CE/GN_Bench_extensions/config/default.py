@@ -1,9 +1,10 @@
 from typing import List, Optional, Union
 
+from GN_Bench.config.default import CONFIG_FILE_SEPARATOR
 from GN_Bench.config.default import Config as CN
-from GN_Bench.config.default import get_config
+from GN_Bench.config.default import get_config as get_base_config
 
-_C = get_config()
+_C = get_base_config()
 _C.defrost()
 
 # ----------------------------------------------------------------------------
@@ -57,32 +58,10 @@ _C.TASK.ACTIONS.GO_TOWARD_POINT = CN()
 _C.TASK.ACTIONS.GO_TOWARD_POINT.TYPE = "GoTowardPoint"
 # if True, update the heading to face away from where the agent came from
 _C.TASK.ACTIONS.GO_TOWARD_POINT.rotate_agent = True
-# ----------------------------------------------------------------------------
-# NDTW MEASUREMENT
-# ----------------------------------------------------------------------------
-_C.TASK.NDTW = CN()
-_C.TASK.NDTW.TYPE = "NDTW"
-_C.TASK.NDTW.SPLIT = "val_seen"
-_C.TASK.NDTW.FDTW = True  # False: DTW
-_C.TASK.NDTW.GT_PATH = (
-    "data/datasets/R2R_VLNCE_v1-3_preprocessed/{split}/{split}_gt.json.gz"
-)
-_C.TASK.NDTW.SUCCESS_DISTANCE = 3.0
-# ----------------------------------------------------------------------------
-# SDTW MEASUREMENT
-# ----------------------------------------------------------------------------
-_C.TASK.SDTW = CN()
-_C.TASK.SDTW.TYPE = "SDTW"
-# ----------------------------------------------------------------------------
 # PATH_LENGTH MEASUREMENT
 # ----------------------------------------------------------------------------
 _C.TASK.PATH_LENGTH = CN()
 _C.TASK.PATH_LENGTH.TYPE = "PathLength"
-# ----------------------------------------------------------------------------
-# ORACLE_NAVIGATION_ERROR MEASUREMENT
-# ----------------------------------------------------------------------------
-_C.TASK.ORACLE_NAVIGATION_ERROR = CN()
-_C.TASK.ORACLE_NAVIGATION_ERROR.TYPE = "OracleNavigationError"
 # ----------------------------------------------------------------------------
 # ORACLE_SUCCESS MEASUREMENT
 # ----------------------------------------------------------------------------
@@ -90,43 +69,10 @@ _C.TASK.ORACLE_SUCCESS = CN()
 _C.TASK.ORACLE_SUCCESS.TYPE = "OracleSuccess"
 _C.TASK.ORACLE_SUCCESS.SUCCESS_DISTANCE = 3.0
 # ----------------------------------------------------------------------------
-# ORACLE_SPL MEASUREMENT
-# ----------------------------------------------------------------------------
-_C.TASK.ORACLE_SPL = CN()
-_C.TASK.ORACLE_SPL.TYPE = "OracleSPL"
-# ----------------------------------------------------------------------------
 # STEPS_TAKEN MEASUREMENT
 # ----------------------------------------------------------------------------
 _C.TASK.STEPS_TAKEN = CN()
 _C.TASK.STEPS_TAKEN.TYPE = "StepsTaken"
-# ----------------------------------------------------------------------------
-# TOP_DOWN_MAP_VLNCE MEASUREMENT
-# ----------------------------------------------------------------------------
-_C.TASK.TOP_DOWN_MAP_VLNCE = CN()
-_C.TASK.TOP_DOWN_MAP_VLNCE.TYPE = "TopDownMapVLNCE"
-_C.TASK.TOP_DOWN_MAP_VLNCE.MAX_EPISODE_STEPS = _C.ENVIRONMENT.MAX_EPISODE_STEPS
-_C.TASK.TOP_DOWN_MAP_VLNCE.MAP_RESOLUTION = 1024
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_SOURCE_AND_TARGET = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_BORDER = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_SHORTEST_PATH = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_REFERENCE_PATH = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_FIXED_WAYPOINTS = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.DRAW_MP3D_AGENT_PATH = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.GRAPHS_FILE = "VLN_CE/data/connectivity_graphs.pkl"
-_C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR = CN()
-_C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.DRAW = True
-_C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.FOV = 90
-_C.TASK.TOP_DOWN_MAP_VLNCE.FOG_OF_WAR.VISIBILITY_DIST = 5.0
-# ----------------------------------------------------------------------------
-# WAYPOINT_REWARD_MEASURE
-# ----------------------------------------------------------------------------
-_C.TASK.WAYPOINT_REWARD_MEASURE = CN()
-_C.TASK.WAYPOINT_REWARD_MEASURE.TYPE = "WaypointRewardMeasure"
-_C.TASK.WAYPOINT_REWARD_MEASURE.use_distance_scaled_slack_reward = True
-_C.TASK.WAYPOINT_REWARD_MEASURE.scale_slack_on_prediction = True
-_C.TASK.WAYPOINT_REWARD_MEASURE.success_reward = 2.5
-_C.TASK.WAYPOINT_REWARD_MEASURE.distance_scalar = 1.0
-_C.TASK.WAYPOINT_REWARD_MEASURE.slack_reward = -0.05
 # ----------------------------------------------------------------------------
 # DATASET EXTENSIONS
 # ----------------------------------------------------------------------------
@@ -137,9 +83,23 @@ _C.DATASET.LANGUAGES = ["*"]
 _C.DATASET.EPISODES_ALLOWED = ["*"]
 
 
+# ----------------------------------------------------------------------------
+# GN0 EVALUATION CONFIG
+# ----------------------------------------------------------------------------
+_EVAL_C = CN()
+_EVAL_C.BASE_TASK_CONFIG_PATH = ""
+_EVAL_C.TASK_CONFIG = CN()
+_EVAL_C.CMD_TRAILING_OPTS = []
+_EVAL_C.EVAL = CN()
+_EVAL_C.EVAL.IDENTIFICATION = "gs"
+_EVAL_C.EVAL.EARLY_STOP_ROTATION = 25
+_EVAL_C.EVAL.EARLY_STOP_STEPS = 500
+
+
 def get_extended_config(
     config_paths: Optional[Union[List[str], str]] = None,
     opts: Optional[list] = None,
+    inline_config: Optional[CN] = None,
 ) -> CN:
     """Create a unified config with default values overwritten by values from
     :p:`config_paths` and overwritten by options from :p:`opts`.
@@ -160,11 +120,40 @@ def get_extended_config(
         for config_path in config_paths:
             config.merge_from_file(config_path)
 
+    if inline_config is not None and len(inline_config) > 0:
+        config.merge_from_other_cfg(inline_config)
+
     if opts:
         config.merge_from_list(opts)
 
-    # set split-dependent metrics to the current split.
-    config.TASK.NDTW.SPLIT = config.DATASET.SPLIT
+    config.freeze()
+    return config
 
+
+def get_config(
+    config_paths: Optional[Union[List[str], str]] = None,
+    opts: Optional[list] = None,
+) -> CN:
+    """Create the GN0 evaluation config without VLN-CE baseline defaults."""
+    config = _EVAL_C.clone()
+
+    if config_paths:
+        if isinstance(config_paths, str):
+            if CONFIG_FILE_SEPARATOR in config_paths:
+                config_paths = config_paths.split(CONFIG_FILE_SEPARATOR)
+            else:
+                config_paths = [config_paths]
+
+        for config_path in config_paths:
+            config.merge_from_file(config_path)
+
+    if opts:
+        config.CMD_TRAILING_OPTS = opts
+        config.merge_from_list(opts)
+
+    config.TASK_CONFIG = get_extended_config(
+        config.BASE_TASK_CONFIG_PATH or None,
+        inline_config=config.TASK_CONFIG,
+    )
     config.freeze()
     return config

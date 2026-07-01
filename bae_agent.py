@@ -52,16 +52,17 @@ class BAEAgent(BAEAgentBase):
                 prev_actions=prev_actions_xml,
             )
 
-            selected_actions = list(actions[: self.action_num]) if actions else []
+            predicted_actions = list(actions) if actions else []
+            selected_actions = predicted_actions[: self.action_num]
             if not selected_actions:
                 return {"action": ACTION_STOP}
 
             self.pending_action_list = selected_actions
             action = self.pending_action_list.pop(0)
             action_img = sim.get_occ_map_with_actions(
-                self.pending_action_list, traj_color=(255, 165, 0)
+                predicted_actions, traj_color=(255, 165, 0)
             )
-            self.save_image(action_img, "action")
+            self.save_image(action_img, "trajectory_vis/action_rollout")
             self.history_action_list.append(action)
             return {"action": action}
 
@@ -76,4 +77,3 @@ class BAEAgent(BAEAgentBase):
         action = self.pending_action_list.pop(0)
         self.history_action_list.append(action)
         return {"action": action}
-
