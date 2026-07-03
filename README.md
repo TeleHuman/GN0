@@ -40,6 +40,7 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
 - [📦 Overview](#-overview)
 - [📚 Getting Started](#-getting-started)
 - [🧪 Evaluation](#-evaluation)
+- [🔌 Remote Client](#-remote-client)
 - [🧭 GN0-VLN-CE](#-gn0-vln-ce)
 - [🔗 Citation](#-citation)
 - [👏 Acknowledgements](#-acknowledgements)
@@ -91,7 +92,7 @@ GN0/
 Run the InteriorGS evaluation:
 
 ```bash
-bash eval_bae_InteriorGS.sh \
+bash eval_bae.sh \
   --model-path model_zoo/bae \
   --chunks 1 \
   --procs-per-gpu 1 \
@@ -109,6 +110,48 @@ Terminate active evaluation workers if needed:
 ```bash
 bash kill_bae_eval.sh
 ```
+
+## 🔌 Remote Client
+
+GN-Bench can evaluate navigation policies hosted outside the GN-Bench environment through a lightweight WebSocket client. The remote policy server receives RGB observations and language instructions, then returns a chunk of actions.
+
+Run GN-Bench workers against remote servers:
+
+```bash
+bash eval_remote.sh \
+  --chunks 8 \
+  --action-format auto \
+  --save-path tmp/remote_eval \
+  --port 8000
+```
+
+Terminate active remote evaluation workers if needed:
+
+```bash
+bash kill_remote_eval.sh
+```
+
+Use `--include-server` only when you also want to stop the remote policy server process.
+
+Remote servers receive msgpack-numpy payloads with these fields:
+
+```python
+{
+    "images": current_or_new_rgb_hwc_or_thwc_uint8,
+    "instruction": instruction_text,
+    "session_id": episode_id,
+}
+```
+
+Recommended response formats:
+
+```python
+{"action_type": "discrete", "actions": [1, 1, 2, 3]}
+{"action_type": "nav_delta", "actions": [[dx, dy, dyaw], ...]}
+```
+
+Discrete actions follow the VLN-CE convention: `0=STOP`, `1=MOVE_FORWARD`, `2=TURN_LEFT`, `3=TURN_RIGHT`. `nav_delta` actions are relative physical deltas `[dx_forward, dy_left, dyaw]`; GN-Bench converts them to simulator pose actions.
+
 
 ## 🧪 Evaluation
 
