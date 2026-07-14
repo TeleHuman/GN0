@@ -68,7 +68,19 @@ def parse_args() -> argparse.Namespace:
     debug_group.add_argument("--debug", action="store_true")
     debug_group.add_argument("--dagger", action="store_true")
     debug_group.add_argument("--start-idx", type=int, default=0, help="StartIndex")
-    debug_group.add_argument("--end-idx", type=int, default=-1, help="EndIndex")
+    debug_group.add_argument(
+        "--end-idx",
+        type=int,
+        default=None,
+        help="Exclusive end index. Omit to run through the dataset end.",
+    )
+
+    collecter_group = parser.add_argument_group("Trajectory Video Collecter")
+    collecter_group.add_argument(
+        "--collecter",
+        action="store_true",
+        help="Render each smoothed dataset trajectory to <result-path>/<scene>/<trajectory>.mp4.",
+    )
 
     return parser.parse_args()
 
@@ -121,13 +133,44 @@ def load_dataset_split(config):
     return dataset.get_splits(1)[0]
 
 
-def select_eval_episodes(dataset_split, log_dir: Path, start_idx: int, end_idx: int):
-    if end_idx == -1:
-        end_idx = len(dataset_split.episodes)
+def resolve_end_idx(episodes: list, end_idx: int | None) -> int:
+    if end_idx is None or end_idx == -1:
+        return len(episodes)
+    if end_idx < -1:
+        raise ValueError(f"end_idx must be >= 0, -1, or omitted; got {end_idx}")
+    return int(end_idx)
 
+
+def select_eval_episodes(
+    dataset_split, log_dir: Path, start_idx: int, end_idx: int | None
+):
+    end_idx = resolve_end_idx(dataset_split.episodes, end_idx)
     finished_ids = {p.stem for p in log_dir.glob("*.json")}
     episodes = dataset_split.episodes[start_idx:end_idx]
     return filter_pending_episodes(episodes, finished_ids), end_idx
+
+
+def select_collecter_episodes(dataset_split, start_idx: int, end_idx: int | None):
+    end_idx = resolve_end_idx(dataset_split.episodes, end_idx)
+    return dataset_split.episodes[start_idx:end_idx], end_idx
+
+
+def resolve_collecter_settings(config):
+    collecter_cfg = getattr(config.EVAL, "COLLECTER", None)
+
+    def pick(name: str, default):
+        if collecter_cfg is not None and name in collecter_cfg:
+            return collecter_cfg[name]
+        return default
+
+    return {
+        "video_fps": float(pick("VIDEO_FPS", 10.0)),
+        "video_codec": str(pick("VIDEO_CODEC", "libx264")),
+        "smooth_window": int(pick("SMOOTH_WINDOW", 9)),
+        "resample_step_m": float(pick("RESAMPLE_STEP_M", 0.05)),
+        "heading_lookahead_m": float(pick("HEADING_LOOKAHEAD_M", 0.5)),
+        "yaw_smooth_window": int(pick("YAW_SMOOTH_WINDOW", 9)),
+    }
 
 
 def build_agent(dagger: bool, model_path, result_path, prompt_type, action_num):
@@ -140,7 +183,14 @@ def build_agent(dagger: bool, model_path, result_path, prompt_type, action_num):
 
 
 def run_exp(
-    exp_config, split_num, split_id, debug=False, start_idx=0, end_idx=-1, **kwargs
+    exp_config,
+    split_num,
+    split_id,
+    debug=False,
+    start_idx=0,
+    end_idx=None,
+    collecter=False,
+    **kwargs,
 ):
     validate_split_args(split_num, split_id)
 
@@ -148,16 +198,24 @@ def run_exp(
         setup_debugger()
 
     config = get_config(exp_config)
-    log_dir = make_log_dir(kwargs["result_path"])
+    result_path = kwargs["result_path"]
+    Path(result_path).mkdir(parents=True, exist_ok=True)
+    log_dir = None if collecter else make_log_dir(result_path)
     dataset_split = load_dataset_split(config)
 
-    global_episodes, resolved_end_idx = select_eval_episodes(
-        dataset_split, log_dir, start_idx, end_idx
-    )
+    if collecter:
+        global_episodes, resolved_end_idx = select_collecter_episodes(
+            dataset_split, start_idx, end_idx
+        )
+    else:
+        global_episodes, resolved_end_idx = select_eval_episodes(
+            dataset_split, log_dir, start_idx, end_idx
+        )
 
     if split_id == 0:
+        mode = "Collecter" if collecter else "Eval"
         print(
-            f"Global Eval Range: [{start_idx}, {resolved_end_idx}] "
+            f"Global {mode} Range: [{start_idx}, {resolved_end_idx}] "
             f"(Total target: {len(global_episodes)})"
         )
 
@@ -169,7 +227,64 @@ def run_exp(
         f"[Split {split_id}/{split_num}] GPU assigned {len(dataset_split.episodes)} episodes."
     )
 
+    if not dataset_split.episodes:
+        print(f"[Split {split_id}/{split_num}] No episodes to process.")
+        return
+
+    if collecter:
+        collecter_settings = resolve_collecter_settings(config)
+        collect_trajectory_videos(
+            config=config,
+            split_id=split_id,
+            dataset=dataset_split,
+            result_path=result_path,
+            **collecter_settings,
+        )
+        return
+
     evaluate_agent(config, split_id, dataset_split, log_dir, **kwargs)
+
+
+def collect_trajectory_videos(
+    config,
+    split_id,
+    dataset,
+    result_path,
+    video_fps,
+    video_codec,
+    smooth_window,
+    resample_step_m,
+    heading_lookahead_m,
+    yaw_smooth_window,
+) -> None:
+    from trajectory_video_collector import TrajectoryVideoCollector
+
+    env = Env(config.TASK_CONFIG, dataset)
+    collector = TrajectoryVideoCollector(
+        result_path,
+        fps=video_fps,
+        codec=video_codec,
+        smooth_window=smooth_window,
+        resample_step_m=resample_step_m,
+        heading_lookahead_m=heading_lookahead_m,
+        yaw_smooth_window=yaw_smooth_window,
+    )
+    print(
+        f"[Collecter] settings: fps={video_fps}, "
+        f"codec={video_codec}, smooth_window={smooth_window}, "
+        f"resample_step_m={resample_step_m}, "
+        f"heading_lookahead_m={heading_lookahead_m}, "
+        f"yaw_smooth_window={yaw_smooth_window}"
+    )
+
+    desc = f"{config.EVAL.IDENTIFICATION}-collecter-{split_id}"
+    for _ in trange(len(env.episodes), desc=desc):
+        env.reset()
+        video_path, frame_count = collector.collect(
+            episode=env.current_episode,
+            sim=env.sim,
+        )
+        print(f"[Collecter] {video_path} ({frame_count} frames)")
 
 
 def evaluate_agent(

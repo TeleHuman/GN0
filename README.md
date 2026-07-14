@@ -40,6 +40,7 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
 - [📦 Overview](#-overview)
 - [📚 Getting Started](#-getting-started)
 - [🧪 Evaluation](#-evaluation)
+- [🎥 Dataset Rendering](#-dataset-rendering)
 - [🔌 Remote Client](#-remote-client)
 - [🧭 GN0-VLN-CE](#-gn0-vln-ce)
 - [🔗 Citation](#-citation)
@@ -70,6 +71,13 @@ This repository hosts the **GN-Bench** evaluation workflow. The current release 
 - [InteriorGS dataset](https://huggingface.co/datasets/spatialverse/InteriorGS)
 - [GN-Matrix dataset](https://huggingface.co/datasets/TeleEmbodied/GN-Matrix)
 
+For the InteriorGS dataset, scenes are rendered from `3dgs_compressed.ply` by default. If disk space is sufficient and higher 3DGS quality is preferred, decompress the Gaussian splats with:
+
+```bash
+npm install -g @playcanvas/splat-transform
+splat-transform 3dgs_compressed.ply 3dgs_decompressed.ply
+```
+
 ## 📚 Getting Started
 
 Please refer to [INSTALLATION.md](INSTALLATION.md) for the complete environment setup, including PyTorch, CUDA extensions, GN-Bench-Tools, and BAE installation.
@@ -94,15 +102,16 @@ Run the InteriorGS evaluation:
 ```bash
 bash eval_bae.sh \
   --model-path model_zoo/bae \
+  --exp-config VLN_CE/GN_Bench_extensions/config/bae_InteriorGS_test_seen.yaml \
   --chunks 1 \
   --procs-per-gpu 1 \
-  --save-path tmp/bae_eval
+  --save-path tmp/bae_test_seen
 ```
 
 Monitor evaluation progress:
 
 ```bash
-watch -n 1 python analyze_results.py --path tmp/bae_eval
+watch -n 1 python analyze_results.py --path tmp/bae_test_seen
 ```
 
 Terminate active evaluation workers if needed:
@@ -110,6 +119,30 @@ Terminate active evaluation workers if needed:
 ```bash
 bash kill_bae_eval.sh
 ```
+
+## 🎥 Dataset Rendering
+
+GN-Bench can render trajectories from the dataset split specified by `--exp-config` directly into MP4 videos.
+
+Run trajectory collection with the BAE entry point and the `--collecter` flag:
+
+```bash
+bash eval_bae.sh \
+  --collecter \
+  --exp-config VLN_CE/GN_Bench_extensions/config/bae_InteriorGS_train_seen.yaml \
+  --start-idx 0 --end-idx 5 \
+  --save-path tmp/train_seen
+```
+
+Videos are written by scene and trajectory id:
+
+```text
+<save-path>/<scene>/<trajectory>.mp4
+```
+
+Rendering and collection options are configured in the YAML passed with `--exp-config`, such as RGB resolution, video frame rate, codec, path resampling, and trajectory smoothing.
+
+The collector first simplifies the pixel-space A* path with line-of-sight smoothing, resamples it in world space, and then renders each pose with a smoothed look-ahead heading.
 
 ## 🔌 Remote Client
 
